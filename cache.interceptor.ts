@@ -1,49 +1,57 @@
 import { Injectable } from '@angular/core';
-import { HttpRequest, HttpHandler, HttpEvent, HttpInterceptor, HttpResponse } from '@angular/common/http';
-import { Observable, of, from } from 'rxjs';
-import { switchMap, map } from 'rxjs/operators';
-import * as localForage from 'localforage';
+import { HttpRequest, HttpHandler, HttpEvent, HttpInterceptor, HttpResponse, HttpHeaders } from '@angular/common/http';
+import { Observable, of } from 'rxjs';
+import { map, tap, share } from 'rxjs/operators';
 import * as moment from 'moment';
 
 @Injectable()
-export abstract class CacheInterceptor implements HttpInterceptor {
-  private cacheTime: number = 60;
-  constructor() { }
+export class CacheInterceptor implements HttpInterceptor {
+  private cache: Map<string, HttpResponse<any>> = new Map();
+  private cacheLifetime: number = 30;
+  private whiteList: string[] = [
+    'api/'
+  ];
 
-  intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    const url = request.url.replace('https://', '').replace(/[^0-9a-z]/g, '');
-
-    return from(localForage.keys()).pipe(
-      switchMap((keys) => this.getFromCache(keys, url)),
-      switchMap((cache) => cache
-        ? of(cache)
-        : next.handle(request).pipe(switchMap((data) => this.addToCache(data, url)))),
-    );
-  }
-
-  getFromCache(keys, url): Observable<any> | null {
-    if (!keys.includes(url)) {
-      return of(null);
+  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    if (req.method !== 'GET' || !this.whiteList.some(item => req.url.includes(item))) {
+      return next.handle(req);
     }
 
-    return from(localForage.getItem(url)).pipe(
-      switchMap((item) => this.isExpired(item))
-    )
+    const cachedResponse: HttpResponse<any> = this.cache.get(req.url);
+
+    return this.checkCacheNoExpired(cachedResponse)
+      ? of(cachedResponse.clone())
+      : next.handle(req).pipe(
+        map(stateEvent => this.addExpHeader(stateEvent)),
+        tap(stateEvent => this.setCache(stateEvent, req.url)),
+        share()
+      );
   }
 
-  addToCache(data, url) {
-    const value = {
-      body: data.body,
-      date: moment().format(),
-    };
+  setCache(stateEvent: any, url: string) {
+    if (!(stateEvent instanceof HttpResponse)) {
+      return;
+    }
 
-    return of(localForage.setItem(url, value)).pipe(map(() => data));
+    this.cache.set(url, stateEvent.clone());
   }
 
-  isExpired(item: any) {
-    const outOfDate = moment().diff(moment(item.date), 'minutes') > this.cacheTime;
-    const resp = new HttpResponse({ body: item.body });
+  addExpHeader(handleReq) {
+    if (!(handleReq instanceof HttpResponse)) {
+      return;
+    }
 
-    return of(outOfDate ? null : resp);
+    const expDateUTC = moment()
+      .add(this.cacheLifetime, 'minutes')
+      .toDate()
+      .toUTCString();
+
+    return handleReq.clone({
+      headers: new HttpHeaders({ 'Expires': expDateUTC })
+    });
+  }
+
+  checkCacheNoExpired(resp: HttpResponse<any> | null): boolean {
+    return !!resp && moment() < moment(resp.headers.get('Expires'));
   }
 }
