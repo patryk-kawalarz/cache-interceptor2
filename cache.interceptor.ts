@@ -28,7 +28,7 @@ export class CacheInterceptor implements HttpInterceptor {
       );
   }
 
-  setCache(stateEvent: any, url: string) {
+  setCache(stateEvent: HttpEvent<any>, url: string) {
     if (!(stateEvent instanceof HttpResponse)) {
       return;
     }
@@ -36,19 +36,21 @@ export class CacheInterceptor implements HttpInterceptor {
     this.cache.set(url, stateEvent.clone());
   }
 
-  addExpHeader(handleReq) {
+  addExpHeader(handleReq: HttpEvent<any>): HttpEvent<any> {
     if (!(handleReq instanceof HttpResponse)) {
       return;
     }
 
-    const expDateUTC = moment()
+    return handleReq.clone({
+      headers: handleReq.headers.set('Expires', this.getUTCdate())
+    });
+  }
+
+  getUTCdate(): string {
+    return moment()
       .add(this.cacheLifetime, 'minutes')
       .toDate()
       .toUTCString();
-
-    return handleReq.clone({
-      headers: new HttpHeaders({ 'Expires': expDateUTC })
-    });
   }
 
   checkCacheNoExpired(resp: HttpResponse<any> | null): boolean {
