@@ -1,6 +1,6 @@
 # Angular cache interceptor
 
-This interceptor caches are all http requests for 60 minutes and stores them in IndexedDB using [localForage](https://github.com/localForage/localForage).
+This interceptor caches http requests from white list for x minutes.
 
 ## Installation
 
@@ -14,4 +14,4 @@ import { CacheInterceptor } from './services/cache.interceptor'
 ```
 
 ### Dependencies
-[MomentJS](https://github.com/moment/moment), [localForage](https://github.com/localForage/localForage)
+[MomentJS](https://github.com/moment/moment), [rxjs](https://github.com/ReactiveX/rxjs)
